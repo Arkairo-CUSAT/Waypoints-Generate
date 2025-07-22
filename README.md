@@ -281,8 +281,6 @@ Feel free to submit issues, feature requests, or improvements to enhance the too
 
 ## License
 
-[Add your license information here]
-
----
+MIT License, reserved to the Arkairo Foundation , CUSAT
 
 **Note**: Always verify generated waypoint files before flight. Test in simulation first and ensure compliance with local aviation regulations.
