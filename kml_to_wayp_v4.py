@@ -183,7 +183,7 @@ class KMLToWaypointV3:
         lons = [p[1] for p in polygon]
         return min(lats), max(lats), min(lons), max(lons)
 
-    def find_polygon_intersections(self, lat: float, polygon: List[Tuple[float, float]]) -> List[float]:
+    def find_polygon_intersections_horizontal(self, lat: float, polygon: List[Tuple[float, float]]) -> List[float]:
         """Find longitude intersections where horizontal line crosses polygon boundary"""
         intersections = []
         n = len(polygon)
@@ -219,9 +219,96 @@ class KMLToWaypointV3:
 
         return paired_intersections
 
+    def find_polygon_intersections_vertical(self, lon: float, polygon: List[Tuple[float, float]]) -> List[float]:
+        """Find latitude intersections where vertical line crosses polygon boundary"""
+        intersections = []
+        n = len(polygon)
+        tolerance = 1e-10
+
+        for i in range(n):
+            p1_lat, p1_lon = polygon[i]
+            p2_lat, p2_lon = polygon[(i + 1) % n]
+
+            # Check if the edge crosses the vertical line
+            if abs(p1_lon - p2_lon) < tolerance:  # Vertical edge
+                if abs(p1_lon - lon) < tolerance:  # Edge lies on the scan line
+                    intersections.extend([p1_lat, p2_lat])
+            else:
+                # Check if scan line crosses the edge
+                if ((p1_lon <= lon < p2_lon) or (p2_lon <= lon < p1_lon)):
+                    # Calculate intersection latitude
+                    lat_intersect = p1_lat + (lon - p1_lon) * (p2_lat - p1_lat) / (p2_lon - p1_lon)
+                    intersections.append(lat_intersect)
+
+        # Remove duplicates and sort
+        intersections = sorted(list(set(intersections)))
+
+        # Group intersections into pairs for entry/exit points
+        paired_intersections = []
+        i = 0
+        while i < len(intersections):
+            if i + 1 < len(intersections):
+                paired_intersections.extend([intersections[i], intersections[i + 1]])
+                i += 2
+            else:
+                i += 1
+
+        return paired_intersections
+
+    def generate_vertical_lawnmower(self, polygon: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+        """
+        Generate optimized vertical lawnmower pattern with proper turns
+        """
+        if len(polygon) < 3:
+            return []
+
+        # Apply buffer to keep away from boundaries
+        buffered_polygon = self.create_buffer_polygon(polygon)
+        min_lat, max_lat, min_lon, max_lon = self.get_polygon_bounds(buffered_polygon)
+
+        # Calculate optimal spacing if using camera settings
+        if self.camera_settings.get('auto_spacing', False):
+            self.spacing = self.calculate_optimal_spacing()
+
+        waypoints = []
+        current_lon = min_lon + self.spacing / 2  # Start slightly inside
+        going_north = True
+        line_count = 0
+
+        print(f"Generating optimized vertical lawnmower pattern...")
+        print(f"Survey area bounds: lat {min_lat:.6f} to {max_lat:.6f}, lon {min_lon:.6f} to {max_lon:.6f}")
+        print(f"Line spacing: {self.spacing:.6f} degrees ({self.spacing * 111000:.1f}m)")
+        print(f"Buffer distance: {self.buffer_distance * 111000:.1f}m from boundaries")
+
+        while current_lon <= max_lon - self.spacing / 2:
+            intersections = self.find_polygon_intersections_vertical(current_lon, buffered_polygon)
+
+            if len(intersections) >= 2:
+                # Process intersection pairs
+                for i in range(0, len(intersections) - 1, 2):
+                    bottom_lat = intersections[i]
+                    top_lat = intersections[i + 1]
+
+                    # Ensure we have valid segment
+                    if abs(top_lat - bottom_lat) > self.spacing / 10:
+                        if going_north:
+                            waypoints.append((bottom_lat, current_lon))
+                            waypoints.append((top_lat, current_lon))
+                        else:
+                            waypoints.append((top_lat, current_lon))
+                            waypoints.append((bottom_lat, current_lon))
+
+                        line_count += 1
+
+            current_lon += self.spacing
+            going_north = not going_north
+
+        print(f"Generated {len(waypoints)} waypoints across {line_count} scan lines")
+        return waypoints
+
     def generate_square_wave_lawnmower(self, polygon: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
-        Generate optimized square wave lawnmower pattern with proper turns
+        Generate optimized square wave lawnmower pattern with proper turns (horizontal)
         """
         if len(polygon) < 3:
             return []
@@ -239,13 +326,13 @@ class KMLToWaypointV3:
         going_east = True
         line_count = 0
 
-        print(f"Generating optimized square wave lawnmower pattern...")
+        print(f"Generating optimized horizontal lawnmower pattern...")
         print(f"Survey area bounds: lat {min_lat:.6f} to {max_lat:.6f}, lon {min_lon:.6f} to {max_lon:.6f}")
         print(f"Line spacing: {self.spacing:.6f} degrees ({self.spacing * 111000:.1f}m)")
         print(f"Buffer distance: {self.buffer_distance * 111000:.1f}m from boundaries")
 
         while current_lat <= max_lat - self.spacing / 2:
-            intersections = self.find_polygon_intersections(current_lat, buffered_polygon)
+            intersections = self.find_polygon_intersections_horizontal(current_lat, buffered_polygon)
 
             if len(intersections) >= 2:
                 # Process intersection pairs
@@ -401,11 +488,12 @@ class KMLToWaypointV3:
             total_distance += math.sqrt(dlat**2 + dlon**2)
 
         print(f"Estimated flight distance: {total_distance:.0f}m")
-        print(f"Pattern type: Square wave lawnmower with buffer zone")
+        print(f"Fence padding: {self.buffer_distance * 111000:.1f}m from boundaries")
+        print(f"Pattern type: Optimized lawnmower with fence padding")
         print("========================\n")
 
 def main():
-    """Enhanced main function with camera and configuration options"""
+    """Enhanced main function with camera, fence padding, and pattern options"""
     if len(sys.argv) < 3:
         print("KML to ArduPilot Waypoint Converter v3")
         print("Usage: python kml_to_waypoint_v3.py <input.kml> <altitude> [options]")
@@ -414,14 +502,15 @@ def main():
         print("  altitude      Flight altitude in meters (integer)")
         print("\nOptional arguments:")
         print("  --spacing METERS        Line spacing in meters (default: auto-calculated)")
-        print("  --buffer METERS         Buffer distance from boundaries (default: 2m)")
+        print("  --fence-padding METERS  Distance to stay inside fence boundaries (default: 2m)")
+        print("  --pattern vertical|horizontal  Flight pattern direction (default: vertical)")
         print("  --no-camera            Disable camera triggers")
         print("  --trigger-dist METERS   Distance between photos (default: 5m)")
         print("  --gimbal-tilt DEGREES   Camera tilt angle (default: -90°)")
         print("  --overlap PERCENT       Photo overlap percentage (default: 80%)")
         print("  --sidelap PERCENT       Side overlap percentage (default: 60%)")
         print("\nExample:")
-        print("  python kml_to_waypoint_v3.py survey_area.kml 50 --spacing 8 --buffer 5")
+        print("  python kml_to_waypoint_v3.py survey_area.kml 50 --spacing 8 --fence-padding 5 --pattern vertical")
         return
 
     input_file = sys.argv[1]
@@ -437,7 +526,8 @@ def main():
 
     # Parse optional arguments
     spacing = None  # Will auto-calculate if None
-    buffer_distance = 0.00002  # ~2m default
+    fence_padding = 2.0  # Default 2m fence padding
+    pattern = "vertical"  # Default to vertical pattern
     camera_enabled = True
     trigger_distance = 5
     gimbal_tilt = -90
@@ -449,8 +539,18 @@ def main():
         if sys.argv[i] == '--spacing' and i + 1 < len(sys.argv):
             spacing = float(sys.argv[i + 1]) / 111000  # Convert meters to degrees
             i += 2
+        elif sys.argv[i] == '--fence-padding' and i + 1 < len(sys.argv):
+            fence_padding = float(sys.argv[i + 1])
+            i += 2
+        elif sys.argv[i] == '--pattern' and i + 1 < len(sys.argv):
+            pattern = sys.argv[i + 1].lower()
+            if pattern not in ['vertical', 'horizontal']:
+                print("Error: Pattern must be 'vertical' or 'horizontal'")
+                return
+            i += 2
         elif sys.argv[i] == '--buffer' and i + 1 < len(sys.argv):
-            buffer_distance = float(sys.argv[i + 1]) / 111000  # Convert meters to degrees
+            # Keep backward compatibility with old --buffer option
+            fence_padding = float(sys.argv[i + 1])
             i += 2
         elif sys.argv[i] == '--no-camera':
             camera_enabled = False
@@ -474,6 +574,9 @@ def main():
     if spacing is None:
         spacing = 0.00005  # ~5m default
 
+    # Convert fence padding to degrees
+    buffer_distance = fence_padding / 111000
+
     # Camera settings
     camera_settings = {
         'trigger_mode': 1 if camera_enabled else 0,
@@ -486,7 +589,7 @@ def main():
     }
 
     # Output filename
-    output_file = "waypoints_v3.txt"
+    output_file = "/home/arjun/ardu-sim/waypoints_v3.txt"
 
     # Create converter
     converter = KMLToWaypointV3(
@@ -504,8 +607,14 @@ def main():
         print("Failed to parse KML file or no valid polygon found")
         return
 
-    # Generate square wave lawnmower pattern
-    waypoints = converter.generate_square_wave_lawnmower(polygon)
+    # Generate waypoints based on selected pattern
+    print(f"Flight pattern: {pattern}")
+    print(f"Fence padding: {fence_padding}m")
+    
+    if pattern == "vertical":
+        waypoints = converter.generate_vertical_lawnmower(polygon)
+    else:
+        waypoints = converter.generate_square_wave_lawnmower(polygon)
 
     if not waypoints:
         print("No waypoints generated within polygon boundary")
