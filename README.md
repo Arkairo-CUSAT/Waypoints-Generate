@@ -1,12 +1,14 @@
-# KML to ArduPilot Waypoint Converter v5
+# KML to ArduPilot Waypoint Converter v6
 
-A powerful Python tool that converts KML polygon files into ArduPilot waypoint missions with advanced camera controls, customizable flight patterns, home position optimization, and smart waypoint sequencing.
+A powerful Python tool that converts KML polygon files into ArduPilot waypoint missions with advanced camera controls, customizable flight patterns, home position optimization, smart waypoint sequencing, and experimental trapezoid optimization.
 
 ## Features
 
+- **🆕 Trapezoid Optimization**: Automatically analyzes polygon shape to fly parallel to the longest side for maximum efficiency
+- **🆕 Home-Aware Finishing**: Intelligently ends flight pattern at the side closest to home position
 - **Home Position Optimization**: Set custom home coordinates (--home-lat, --home-lon) for optimized flight planning
 - **Smart Waypoint Sequencing**: Automatically optimizes waypoint order to start and end closest to home position
-- **Dual Flight Patterns**: Choose between vertical (north-south) or horizontal (east-west) lawnmower patterns
+- **Intelligent Flight Patterns**: Auto-select optimal direction or choose between vertical/horizontal lawnmower patterns
 - **Fence Padding**: Configurable safety buffer to keep drone inside polygon boundaries
 - **Camera Integration**: Automatic camera trigger and gimbal control for aerial photography
 - **Optimized Spacing**: Auto-calculated line spacing based on camera settings for optimal photo overlap
@@ -25,19 +27,19 @@ A powerful Python tool that converts KML polygon files into ArduPilot waypoint m
 1. Clone or download the script:
 ```bash
 git clone <repository-url>
-# or download kml_to_wayp_v5.py directly
+# or download kml_to_wayp_v6.py directly
 ```
 
 2. Make the script executable:
 ```bash
-chmod +x kml_to_wayp_v5.py
+chmod +x kml_to_wayp_v6.py
 ```
 
 ## Usage
 
 ### Basic Syntax
 ```bash
-python kml_to_wayp_v5.py <input.kml> <altitude> [options]
+python kml_to_wayp_v6.py <input.kml> <altitude> [options]
 ```
 
 ### Required Arguments
@@ -50,7 +52,7 @@ python kml_to_wayp_v5.py <input.kml> <altitude> [options]
 |--------|-------------|---------|
 | `--spacing METERS` | Line spacing between flight paths | Auto-calculated |
 | `--fence-padding METERS` | Distance to stay inside fence boundaries | 2m |
-| `--pattern vertical\|horizontal` | Flight pattern direction | vertical |
+| `--pattern auto\|vertical\|horizontal` | Flight pattern direction | auto (trapezoid optimized) |
 | `--home-lat LATITUDE` | Home position latitude (for optimization) | None |
 | `--home-lon LONGITUDE` | Home position longitude (for optimization) | None |
 | `--no-camera` | Disable camera triggers | Camera enabled |
@@ -63,33 +65,40 @@ python kml_to_wayp_v5.py <input.kml> <altitude> [options]
 
 ### Basic Usage
 ```bash
-# Simple vertical survey at 50m altitude
-python kml_to_wayp_v5.py survey_area.kml 50
+# Simple auto-optimized survey at 50m altitude (NEW - trapezoid optimized)
+python kml_to_wayp_v6.py survey_area.kml 50
 
-# Horizontal pattern with custom fence padding
-python kml_to_wayp_v5.py survey_area.kml 30 --pattern horizontal --fence-padding 5
+# Manual pattern selection with custom fence padding
+python kml_to_wayp_v6.py survey_area.kml 30 --pattern horizontal --fence-padding 5
 
-# Optimized mission with home position
-python kml_to_wayp_v5.py survey_area.kml 50 --home-lat 12.345678 --home-lon 78.901234
+# Optimized mission with home position (recommended)
+python kml_to_wayp_v6.py survey_area.kml 50 --home-lat 12.345678 --home-lon 78.901234
 ```
 
 ### Advanced Usage
 ```bash
-# High-resolution survey with tight spacing and home optimization
-python kml_to_wayp_v5.py detailed_survey.kml 25 --spacing 3 --fence-padding 3 --trigger-dist 3 --home-lat 12.345678 --home-lon 78.901234
+# High-resolution survey with trapezoid optimization and home positioning
+python kml_to_wayp_v6.py detailed_survey.kml 25 --spacing 3 --fence-padding 3 --trigger-dist 3 --home-lat 12.345678 --home-lon 78.901234
 
-# No camera survey flight with home position
-python kml_to_wayp_v5.py inspection_area.kml 40 --no-camera --fence-padding 10 --home-lat 12.345678 --home-lon 78.901234
+# Force vertical pattern (override auto-optimization)
+python kml_to_wayp_v6.py inspection_area.kml 40 --pattern vertical --fence-padding 10 --home-lat 12.345678 --home-lon 78.901234
 
-# Custom camera settings with home optimization
-python kml_to_wayp_v5.py photo_mission.kml 60 --gimbal-tilt -45 --overlap 90 --sidelap 70 --home-lat 12.345678 --home-lon 78.901234
+# Custom camera settings with auto-optimization
+python kml_to_wayp_v6.py photo_mission.kml 60 --gimbal-tilt -45 --overlap 90 --sidelap 70 --home-lat 12.345678 --home-lon 78.901234
 ```
 
 ## Flight Patterns
 
-### Vertical Pattern (Default - Recommended)
+### Auto Pattern (NEW - Default - Recommended)
+- **Direction**: Automatically determined by analyzing polygon geometry
+- **Algorithm**: Flies parallel to the longest side of the trapezoid/polygon
+- **Optimization**: Ends flight pattern at the side closest to home position
+- **Advantages**: Maximum efficiency for irregular shapes, minimizes flight time
+- **Best for**: All survey areas, especially trapezoidal and irregular polygons
+
+### Vertical Pattern
 - **Direction**: North-South flight lines
-- **Advantages**: Fewer turns for most survey areas, more efficient
+- **Advantages**: Fewer turns for most survey areas, more efficient for wide areas
 - **Best for**: Wide areas, standard aerial photography
 
 ### Horizontal Pattern
@@ -100,27 +109,37 @@ python kml_to_wayp_v5.py photo_mission.kml 60 --gimbal-tilt -45 --overlap 90 --s
 ## Output
 
 The script generates:
-1. **Waypoint file**: `waypoints_v5.txt` in ArduPilot format (saved to `~/ardu-sim/`)
-2. **Mission summary**: Detailed flight statistics including home position optimization
-3. **Progress information**: Real-time processing updates
+1. **Waypoint file**: `waypoints_v6.txt` in ArduPilot format (saved to `~/ardu-sim/`)
+2. **Mission summary**: Detailed flight statistics including trapezoid optimization analysis
+3. **Progress information**: Real-time processing updates with geometry analysis
 
 ### Sample Output
 ```
 Parsing KML file: survey_area.kml
 Parsed 8 boundary points from KML
+Analyzing polygon sides for optimal flight direction...
+Side 0: length=245.3m, bearing=15.2°, orientation=vertical
+Side 1: length=180.7m, bearing=78.4°, orientation=horizontal
+Side 2: length=198.1m, bearing=25.8°, orientation=vertical
+Side 3: length=425.6m, bearing=82.1°, orientation=horizontal
+Longest side: 3 (425.6m, horizontal orientation)
+Trapezoid optimization: Flying parallel to longest side (horizontal)
+Side closest to home: 2 (distance: 145.3m)
 Applied 2.0m buffer zone from boundaries
 Home position set to: 12.345678, 78.901234
-Optimizing waypoint sequence for home position...
-Closest waypoint to home: index 2, distance: 45.3m
-Generating optimized vertical lawnmower pattern...
+Using horizontal pattern based on trapezoid optimization
+Generating optimized horizontal lawnmower pattern...
 Survey area bounds: lat 40.123456 to 40.126789, lon -74.987654 to -74.983210
 Line spacing: 0.000045 degrees (5.0m)
-Buffer distance: 2.0m from boundaries
-Generated 24 waypoints across 6 scan lines
+Optimizing pattern to finish near home side...
+Distance from first waypoint to home side: 320.5m
+Distance from last waypoint to home side: 89.2m
+Pattern already optimized - last waypoint is closer to home side
+Generated 28 waypoints across 7 scan lines
 
 === MISSION SUMMARY ===
 Home position: 12.345678, 78.901234
-Survey waypoints: 24
+Survey waypoints: 28
 Flight altitude: 50m AGL
 Line spacing: 5.0m
 Buffer from boundaries: 2.0m
@@ -129,11 +148,11 @@ Camera trigger: ENABLED
   Gimbal tilt: -90°
   Expected overlap: 80%
   Expected sidelap: 60%
-Distance from home to first waypoint: 45m
-Estimated survey flight distance: 850m
-Distance from last waypoint to home: 52m
-Total mission distance: 947m
-Pattern type: Optimized lawnmower with home position optimization
+Distance from home to first waypoint: 52m
+Estimated survey flight distance: 920m
+Distance from last waypoint to home: 31m
+Total mission distance: 1003m
+Pattern type: Optimized trapezoid-aware with home position optimization
 ```
 
 ## KML File Requirements
@@ -166,8 +185,16 @@ Your KML file should contain:
 
 ## Safety Features
 
+### Trapezoid Optimization (NEW in v6)
+Intelligent polygon analysis for optimal flight patterns:
+- **Geometry Analysis**: Automatically measures all polygon sides and determines longest edge
+- **Direction Selection**: Chooses flight direction parallel to longest side for efficiency
+- **Home-Aware Ending**: Analyzes which polygon side is closest to home position
+- **Pattern Reversal**: Reverses flight pattern if needed to end closer to home
+- **Efficiency Gains**: Reduces overall flight time and battery consumption
+
 ### Home Position Optimization
-Version 5 introduces intelligent waypoint sequencing based on a specified home position:
+Version 5+ intelligent waypoint sequencing based on a specified home position:
 - **Custom Home Coordinates**: Set with `--home-lat` and `--home-lon` parameters
 - **Automatic Optimization**: Finds the closest waypoint to home and optimizes mission start
 - **Pattern Reversal**: May reverse entire flight pattern to minimize travel distance
@@ -231,7 +258,7 @@ Output files use QGroundControl waypoint format (.wayplan compatible):
 ### File Permissions
 ```bash
 # If you get permission errors:
-chmod +x kml_to_wayp_v5.py
+chmod +x kml_to_wayp_v6.py
 chmod 755 /home/arjun/ardu-sim/  # Output directory
 ```
 
@@ -249,15 +276,25 @@ chmod 755 /home/arjun/ardu-sim/  # Output directory
 
 ### Pattern Generation Algorithm
 1. Parse KML polygon
-2. Apply inward buffer (fence padding)
-3. Calculate polygon bounding box
-4. Generate parallel scan lines
-5. Find polygon intersections
-6. Optimize waypoint sequence based on home position
-7. Create alternating flight pattern
-8. Add camera and navigation commands
+2. **NEW**: Analyze polygon geometry to find longest side and optimal flight direction
+3. Apply inward buffer (fence padding)
+4. Calculate polygon bounding box
+5. Generate parallel scan lines in optimal direction
+6. Find polygon intersections
+7. **NEW**: Optimize pattern to end at side closest to home position
+8. Optimize waypoint sequence based on home position
+9. Create alternating flight pattern
+10. Add camera and navigation commands
 
 ## Version History
+
+### v6.0 Features (NEW - Experimental)
+- **🚀 Trapezoid Optimization**: Analyzes polygon geometry to fly parallel to longest side
+- **🎯 Home-Aware Finishing**: Ends flight pattern at polygon side closest to home position
+- **📐 Geometry Analysis**: Automatic side length calculation and bearing analysis
+- **⚡ Efficiency Improvements**: Reduced flight time through intelligent pattern selection
+- **🔄 Smart Pattern Reversal**: Reverses entire pattern when beneficial for home proximity
+- **📊 Enhanced Logging**: Detailed geometry analysis output during mission planning
 
 ### v5.0 Features
 - **Home position optimization**: Set custom home coordinates with --home-lat and --home-lon
