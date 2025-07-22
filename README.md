@@ -91,7 +91,7 @@ python old_v3.py photo_mission.kml 60 --gimbal-tilt -45 --overlap 90 --sidelap 7
 ## Output
 
 The script generates:
-1. **Waypoint file**: `waypoints_v3.txt` in ArduPilot format
+1. **Waypoint file**: `waypoints.txt` in ArduPilot format
 2. **Mission summary**: Detailed flight statistics
 3. **Progress information**: Real-time processing updates
 

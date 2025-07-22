@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 import math
 import sys
 import json
+import os
 from typing import List, Tuple, Optional, Dict
 import re
 
@@ -589,8 +590,7 @@ def main():
     }
 
     # Output filename
-    output_file = "/home/arjun/ardu-sim/waypoints_v3.txt"
-
+    output_file = os.path.expanduser("~/ardu-sim/waypoints.txt")
     # Create converter
     converter = KMLToWaypointV3(
         altitude=altitude,
