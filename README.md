@@ -1,4 +1,15 @@
-# KML to ArduPilot Waypoint Converter v6
+
+# KML to ArduPilot Waypoint Converter v8
+
+## 🚀 What's New in v8?
+
+- **Smart Corner Detection**: Identifies polygon corners (top-right, top-left, etc.) for optimal flight planning
+- **Optimized Start/End**: Flight pattern starts from the top-right and ends near the top-left, minimizing return distance to home
+- **Minimal Return Distance**: Pattern direction and ordering are chosen to reduce total flight time and battery use
+- **Enhanced Ordering**: Considers home position and polygon geometry for best waypoint sequence
+- **Detailed Mission Summary**: Reports corner analysis, pattern direction, and distance optimizations
+
+---
 
 A powerful Python tool that converts KML polygon files into ArduPilot waypoint missions with advanced camera controls, customizable flight patterns, home position optimization, smart waypoint sequencing, and experimental trapezoid optimization.
 
@@ -63,38 +74,35 @@ python kml_to_wayp_v6.py <input.kml> <altitude> [options]
 
 ## Examples
 
-### Basic Usage
-```bash
-# Simple auto-optimized survey at 50m altitude (NEW - trapezoid optimized)
-python kml_to_wayp_v6.py survey_area.kml 50
 
-# Manual pattern selection with custom fence padding
-python kml_to_wayp_v6.py survey_area.kml 30 --pattern horizontal --fence-padding 5
+### Basic Usage (v8)
+```bash
+# Smart corner-optimized survey at 50m altitude
+python kml_to_wayp_v8.py survey_area.kml 50
 
 # Optimized mission with home position (recommended)
-python kml_to_wayp_v6.py survey_area.kml 50 --home-lat 12.345678 --home-lon 78.901234
+python kml_to_wayp_v8.py survey_area.kml 50 --home-lat 12.345678 --home-lon 78.901234
 ```
 
-### Advanced Usage
+
+### Advanced Usage (v8)
 ```bash
-# High-resolution survey with trapezoid optimization and home positioning
-python kml_to_wayp_v6.py detailed_survey.kml 25 --spacing 3 --fence-padding 3 --trigger-dist 3 --home-lat 12.345678 --home-lon 78.901234
+# High-resolution survey with corner optimization and home positioning
+python kml_to_wayp_v8.py detailed_survey.kml 25 --spacing 3 --fence-padding 3 --trigger-dist 3 --home-lat 12.345678 --home-lon 78.901234
 
-# Force vertical pattern (override auto-optimization)
-python kml_to_wayp_v6.py inspection_area.kml 40 --pattern vertical --fence-padding 10 --home-lat 12.345678 --home-lon 78.901234
-
-# Custom camera settings with auto-optimization
-python kml_to_wayp_v6.py photo_mission.kml 60 --gimbal-tilt -45 --overlap 90 --sidelap 70 --home-lat 12.345678 --home-lon 78.901234
+# Custom camera settings with corner-optimized pattern
+python kml_to_wayp_v8.py photo_mission.kml 60 --gimbal-tilt -45 --overlap 90 --sidelap 70 --home-lat 12.345678 --home-lon 78.901234
 ```
+
 
 ## Flight Patterns
 
-### Auto Pattern (NEW - Default - Recommended)
-- **Direction**: Automatically determined by analyzing polygon geometry
-- **Algorithm**: Flies parallel to the longest side of the trapezoid/polygon
-- **Optimization**: Ends flight pattern at the side closest to home position
-- **Advantages**: Maximum efficiency for irregular shapes, minimizes flight time
-- **Best for**: All survey areas, especially trapezoidal and irregular polygons
+### v8: Corner-Optimized Pattern (Default)
+- **Direction**: Starts at top-right, ends at top-left (minimizes return distance)
+- **Algorithm**: Flies parallel to the longest side, but orders scan lines and waypoints for best home proximity
+- **Optimization**: Uses polygon corner analysis and home position for pattern direction and ordering
+- **Advantages**: Maximum efficiency, minimal battery use, best for all survey areas
+- **Best for**: All polygons, especially when home position is set
 
 ### Vertical Pattern
 - **Direction**: North-South flight lines
@@ -106,35 +114,39 @@ python kml_to_wayp_v6.py photo_mission.kml 60 --gimbal-tilt -45 --overlap 90 --s
 - **Advantages**: Better for tall, narrow areas
 - **Best for**: Linear features, specific geometric requirements
 
+
 ## Output
 
 The script generates:
-1. **Waypoint file**: `waypoints_v6.txt` in ArduPilot format (saved to `~/ardu-sim/`)
-2. **Mission summary**: Detailed flight statistics including trapezoid optimization analysis
-3. **Progress information**: Real-time processing updates with geometry analysis
+1. **Waypoint file**: `waypoints_v8.txt` in ArduPilot format (saved to `~/ardu-sim/`)
+2. **Mission summary**: Detailed flight statistics including corner analysis and pattern optimization
+3. **Progress information**: Real-time updates with geometry and corner detection
 
-### Sample Output
+### Sample Output (v8)
 ```
+Home position set to: 12.345678, 78.901234
 Parsing KML file: survey_area.kml
 Parsed 8 boundary points from KML
-Analyzing polygon sides for optimal flight direction...
-Side 0: length=245.3m, bearing=15.2°, orientation=vertical
-Side 1: length=180.7m, bearing=78.4°, orientation=horizontal
-Side 2: length=198.1m, bearing=25.8°, orientation=vertical
-Side 3: length=425.6m, bearing=82.1°, orientation=horizontal
-Longest side: 3 (425.6m, horizontal orientation)
-Trapezoid optimization: Flying parallel to longest side (horizontal)
-Side closest to home: 2 (distance: 145.3m)
+Fence padding: 2.0m
+Using corner-optimized parallel flight pattern...
 Applied 2.0m buffer zone from boundaries
-Home position set to: 12.345678, 78.901234
-Using horizontal pattern based on trapezoid optimization
-Generating optimized horizontal lawnmower pattern...
-Survey area bounds: lat 40.123456 to 40.126789, lon -74.987654 to -74.983210
-Line spacing: 0.000045 degrees (5.0m)
-Optimizing pattern to finish near home side...
-Distance from first waypoint to home side: 320.5m
-Distance from last waypoint to home side: 89.2m
-Pattern already optimized - last waypoint is closer to home side
+Analyzing polygon sides for optimal flight direction...
+Side 0: length=245.3m, bearing=15.2°
+Side 1: length=180.7m, bearing=78.4°
+Side 2: length=198.1m, bearing=25.8°
+Side 3: length=425.6m, bearing=82.1°
+Longest side: 3 (425.6m, bearing=82.1°)
+Polygon corners identified:
+  top_right: (40.126789, -74.983210)
+  top_left: (40.126789, -74.987654)
+  bottom_left: (40.123456, -74.987654)
+  bottom_right: (40.123456, -74.983210)
+Generating flight lines parallel to longest side (bearing: 82.1°)
+Optimizing waypoint ordering for minimal return distance...
+Pattern point closest to top-right corner: first_start at (40.126789, -74.983210)
+Starting pattern from start of first line
+Distance from pattern start to home: 52.0m
+Distance from pattern end to home: 31.0m
 Generated 28 waypoints across 7 scan lines
 
 === MISSION SUMMARY ===
@@ -152,7 +164,7 @@ Distance from home to first waypoint: 52m
 Estimated survey flight distance: 920m
 Distance from last waypoint to home: 31m
 Total mission distance: 1003m
-Pattern type: Optimized trapezoid-aware with home position optimization
+Pattern type: Corner-optimized parallel flight with smart ordering
 ```
 
 ## KML File Requirements
