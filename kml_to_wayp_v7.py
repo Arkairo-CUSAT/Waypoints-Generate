@@ -177,8 +177,8 @@ class KMLToWaypointV7:
         diagonal_distance = self.calculate_distance((min_lat, min_lon), (max_lat, max_lon))
         max_extend = diagonal_distance / 2
         
-        waypoints = []
-        line_count = 0
+        # Collect all valid lines first, then sort them
+        all_lines = []
         
         # Start from center and work outward in both directions
         for direction in [-1, 1]:  # negative and positive directions
@@ -195,22 +195,38 @@ class KMLToWaypointV7:
                 )
                 
                 # Generate line through this point parallel to longest side
-                line_waypoints = self.generate_line_through_point_parallel_to_bearing(
-                    offset_lat, offset_lon, bearing, buffered_polygon, line_count % 2 == 0
+                line_intersections = self.get_line_intersections_only(
+                    offset_lat, offset_lon, bearing, buffered_polygon
                 )
                 
-                if line_waypoints:
-                    waypoints.extend(line_waypoints)
-                    line_count += 1
+                if len(line_intersections) >= 2:
+                    # Store line with its offset distance for sorting
+                    all_lines.append((offset_distance * direction, line_intersections))
                 
                 offset_distance += spacing_meters
         
+        # Sort lines by their offset distance (this ensures proper order)
+        all_lines.sort(key=lambda x: x[0])
+        
+        # Generate waypoints in proper lawnmower pattern
+        waypoints = []
+        line_count = 0
+        
+        for offset_distance, line_intersections in all_lines:
+            # Sort intersections by distance along the bearing direction
+            start_point = line_intersections[0]
+            end_point = line_intersections[-1]
+            
+            # Alternate direction for lawnmower pattern
+            if line_count % 2 == 0:
+                waypoints.extend([start_point, end_point])
+            else:
+                waypoints.extend([end_point, start_point])
+            
+            line_count += 1
+        
         print(f"Generated {len(waypoints)} waypoints across {line_count} scan lines")
         
-        # Optimize to end near home side
-        if self.home_position:
-            waypoints = self.optimize_pattern_end_near_home(waypoints, buffered_polygon)
-            
         return waypoints
 
     def point_at_bearing_and_distance(self, lat: float, lon: float, bearing: float, distance: float) -> Tuple[float, float]:
@@ -231,11 +247,10 @@ class KMLToWaypointV7:
         
         return math.degrees(lat2), math.degrees(lon2)
 
-    def generate_line_through_point_parallel_to_bearing(self, point_lat: float, point_lon: float, 
-                                                      bearing: float, polygon: List[Tuple[float, float]], 
-                                                      go_forward: bool) -> List[Tuple[float, float]]:
+    def get_line_intersections_only(self, point_lat: float, point_lon: float, 
+                                   bearing: float, polygon: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
-        Generate a line through a point with given bearing, clipped to polygon boundaries
+        Get intersection points of a line through a point with given bearing, clipped to polygon boundaries
         """
         # Extend line in both directions from the point
         max_extension = 2000  # 2km in meters
@@ -256,7 +271,19 @@ class KMLToWaypointV7:
         if len(intersections) >= 2:
             # Sort intersections by distance from end1
             intersections.sort(key=lambda p: self.calculate_distance((end1_lat, end1_lon), p))
-            
+            return intersections
+        
+        return []
+
+    def generate_line_through_point_parallel_to_bearing(self, point_lat: float, point_lon: float, 
+                                                      bearing: float, polygon: List[Tuple[float, float]], 
+                                                      go_forward: bool) -> List[Tuple[float, float]]:
+        """
+        Generate a line through a point with given bearing, clipped to polygon boundaries
+        """
+        intersections = self.get_line_intersections_only(point_lat, point_lon, bearing, polygon)
+        
+        if len(intersections) >= 2:
             # Take the first and last intersection (entry and exit points)
             start_point = intersections[0]
             end_point = intersections[-1]
@@ -324,37 +351,27 @@ class KMLToWaypointV7:
 
     def optimize_pattern_end_near_home(self, waypoints: List[Tuple[float, float]], polygon: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """
-        Optimize flight pattern to end at the side closest to home
+        Simple optimization - just check if we should reverse the entire pattern once
         """
         if not self.home_position or len(waypoints) < 2:
             return waypoints
         
-        print("Optimizing pattern to finish near home side...")
+        print("Checking if pattern should be reversed for home proximity...")
         
-        closest_side = self.get_side_closest_to_home(polygon)
+        # Calculate distances from home to first and last waypoints
+        first_to_home = self.calculate_distance(waypoints[0], self.home_position)
+        last_to_home = self.calculate_distance(waypoints[-1], self.home_position)
         
-        # Get the side coordinates
-        if closest_side < len(polygon):
-            side_start = polygon[closest_side]
-            side_end = polygon[(closest_side + 1) % len(polygon)]
-            side_midpoint = ((side_start[0] + side_end[0]) / 2, (side_start[1] + side_end[1]) / 2)
-        else:
-            return waypoints
+        print(f"Distance from first waypoint to home: {first_to_home:.1f}m")
+        print(f"Distance from last waypoint to home: {last_to_home:.1f}m")
         
-        # Calculate distances from first and last waypoints to the home-closest side
-        first_to_side = self.calculate_distance(waypoints[0], side_midpoint)
-        last_to_side = self.calculate_distance(waypoints[-1], side_midpoint)
-        
-        print(f"Distance from first waypoint to home side: {first_to_side:.1f}m")
-        print(f"Distance from last waypoint to home side: {last_to_side:.1f}m")
-        
-        # If first waypoint is closer to home side than last, reverse the pattern
-        if first_to_side > last_to_side:
-            print("Pattern already optimized - last waypoint is closer to home side")
-            return waypoints
-        else:
-            print("Reversing pattern to end closer to home side")
+        # Only reverse if last waypoint is significantly closer to home than first
+        if last_to_home < first_to_home * 0.7:  # 30% improvement threshold
+            print("Reversing entire pattern to end closer to home")
             return list(reversed(waypoints))
+        else:
+            print("Keeping original pattern direction")
+            return waypoints
 
     def calculate_optimal_spacing(self) -> float:
         """
